@@ -1,0 +1,163 @@
+# Linux Mirror Testing Solution - Configuration File
+# This is the central configuration file for all components
+
+# Application Settings
+app:
+  name: "Linux Mirror Testing Solution"
+  version: "1.0.0"
+  description: "Automated testing system for air-gapped Linux repository mirrors"
+
+# Repository Settings
+repositories:
+  # Debian repositories - current releases
+  debian:
+    - url: "http://deb.debian.org/debian"
+      enabled: true
+      distributions:
+        - "11"  # bullseye
+        - "12"  # bookworm
+        - "13"  # trixie (testing)
+    # Debian archive for older versions
+    - url: "http://archive.debian.org/debian"
+      enabled: true
+      distributions:
+        - "7"   # wheezy (archived)
+        - "8"   # jessie (archived)
+        - "9"   # stretch (archived)
+        - "10"  # buster (archived)
+  
+  # Ubuntu repositories
+  ubuntu:
+    - url: "http://archive.ubuntu.com/ubuntu"
+      enabled: true
+      distributions:
+        - "20.04"  # focal (LTS)
+        - "22.04"  # jammy (LTS)
+        - "24.04"  # noble (LTS)
+    # Ubuntu old releases
+    - url: "http://old-releases.ubuntu.com/ubuntu"
+      enabled: true
+      distributions:
+        - "18.04"  # bionic (EOL)
+  
+  # Kali repositories
+  kali:
+    - url: "http://kali.download/kali"
+      enabled: true
+      distributions:
+        - "kali-rolling"
+  
+  # Rocky Linux repositories
+  rocky:
+    - url: "http://dl.rockylinux.org/pub/rocky"
+      enabled: true
+      distributions:
+        - "8"
+        - "9"
+        - "10"
+  
+  # RHEL repositories
+  rhel:
+    - url: "http://download.devel.redhat.com/rel-eng/"
+      enabled: true
+      distributions:
+        - "8"
+        - "9"
+        - "10"
+
+# Test Settings
+test:
+  # Interval between automated tests (in minutes)
+  interval_minutes: 60
+  
+  # Timeout for individual test operations (in seconds)
+  timeout_seconds: 300
+  
+  # Maximum number of concurrent tests
+  max_concurrent_tests: 5
+  
+  # Test types to run
+  test_types:
+    - "update"
+    - "install"
+    - "repolist"
+  
+  # Default test timeout for all operations
+  default_timeout_seconds: 30
+
+# Container Settings
+container:
+  # Memory limit for test containers (in MB)
+  memory_mb: 1024
+  
+  # CPU cores allocation for test containers
+  cpu_cores: 1.0
+  
+  # Base images to use for different distributions
+  base_images:
+    debian: "debian:latest"
+    ubuntu: "ubuntu:latest"
+    kali: "kalilinux/kali-rolling:latest"
+    rocky: "rockylinux:latest"
+    rhel: "rhel:latest"
+
+# Database Settings
+database:
+  # Type of database to use (sqlite, postgresql)
+  type: "sqlite"
+  
+  # Database connection settings
+  host: "localhost"
+  port: 5432
+  username: "test_user"
+  password: "test_password"
+  name: "test_results"
+
+# Frontend Settings
+frontend:
+  # Refresh interval for dashboard updates (in seconds)
+  refresh_interval_seconds: 5
+  
+  # Show historical test data
+  show_history: true
+  
+  # Default timeout for frontend operations
+  default_timeout: 300
+  
+  # Display settings
+  display:
+    theme: "light"
+    show_timestamps: true
+    show_durations: true
+
+# Notification Settings
+notifications:
+  # Enable email notifications
+  email_enabled: false
+  
+  # Enable webhook notifications
+  webhook_enabled: false
+  
+  # Email settings
+  email:
+    server: "smtp.example.com"
+    port: 587
+    username: ""
+    password: ""
+    recipients: []
+  
+  # Webhook settings
+  webhook:
+    url: ""
+    method: "POST"
+    headers: {}
+
+# Environment Variables Override
+# Note: These can be overridden using environment variables
+# Example: export APP_NAME="My Custom Name"
+env_override:
+  app_name: ""
+  api_port: 8000
+  frontend_port: 3000
+  database_url: ""
+  test_interval: ""

@@ -1,0 +1,68 @@
+# Linu- Mirror Testing Solution - Docker Compose
+# se logs backend
+#
+
+services:
+  # Docker-in-Docker service for running test containers
+  docker-daemon:
+    image: docker:dind
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=
+    volumes:
+      - docker-data:/var/lib/docker
+    networks:
+      - mirror-network
+    command: ["dockerd", "--host=tcp://0.0.0.0:2376", "--insecure-registry=0.0.0.0/0"]
+
+  # Backend service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - PYTHONPATH=/app
+      - DOCKER_HOST=tcp://docker-daemon:2376
+    depends_on:
+      - database
+      - docker-daemon
+    networks:
+      - mirror-network
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+    networks:
+      - mirror-network
+
+  # Database service (using SQLite for simplicity in this example)
+  database:
+    image: "postgres:13"
+    environment:
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    networks:
+      - mirror-network
+
+networks:
+  mirror-network:
+    driver: bridge
+
+volumes:
+  docker-data:

@@ -1,0 +1,16 @@
+{
+  "name": "linux-mirror-testing-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Linux Mirror Testing Solution",
+  "main": "index.js",
+  "scripts": {
+    "start": "serve -l 3000",
+    "dev": "serve -l 3000"
+  },
+  "dependencies": {
+    "serve": "^14.2.1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
+}
