@@ -119,6 +119,15 @@ async def test_connectivity(distribution: str, version: str, repository_url: str
                 codenames = {"18.04": "bionic", "20.04": "focal", "22.04": "jammy", "24.04": "noble"}
                 codename = codenames.get(version, version)
                 test_urls = [f"{repository_url}/dists/{codename}/Release"]
+            elif distribution.lower() == "kali":
+                # Kali uses kali-rolling
+                test_urls = [f"{repository_url}/dists/kali-rolling/Release"]
+            elif distribution.lower() == "rocky":
+                # Rocky Linux repo structure: test repodata for BaseOS
+                test_urls = [f"{repository_url}/{version}/BaseOS/x86_64/os/repodata/repomd.xml"]
+            elif distribution.lower() == "rhel":
+                # RHEL repo structure: test repodata for BaseOS
+                test_urls = [f"{repository_url}/{version}/BaseOS/x86_64/os/repodata/repomd.xml"]
             else:
                 test_urls = [repository_url]
 
@@ -137,46 +146,101 @@ async def test_connectivity(distribution: str, version: str, repository_url: str
 
 async def test_repository_update(distribution: str, version: str, repository_url: str):
     """Test repository update in a container"""
+    import os
     try:
         # Get base image from config
         base_images = {
             "debian": f"debian:{version}" if version in ["11", "12"] else "debian:latest",
             "ubuntu": f"ubuntu:{version}" if version in ["20.04", "22.04", "24.04"] else "ubuntu:latest",
             "kali": "kalilinux/kali-rolling:latest",
-            "rocky": f"rockylinux:{version}" if version in ["8", "9"] else "rockylinux:latest",
+            "rocky": f"rockylinux:{version}" if version in ["8", "9"] else "rockylinux:9",
             "rhel": f"registry.access.redhat.com/ubi{version}/ubi" if version in ["8", "9"] else "registry.access.redhat.com/ubi9/ubi"
         }
 
         image = base_images.get(distribution.lower(), "ubuntu:latest")
 
-        # Create sources.list content for the test
-        if distribution.lower() in ["debian", "ubuntu"]:
-            codename = get_codename(distribution, version)
-            sources_content = f"deb {repository_url} {codename} main"
+        # Set Docker host from environment
+        docker_host = os.environ.get('DOCKER_HOST', 'tcp://docker-daemon:2376')
 
-            # Create Docker command to test apt update
+        # Create sources.list content for the test
+        if distribution.lower() in ["debian", "ubuntu", "kali"]:
+            if distribution.lower() == "kali":
+                # Kali uses kali-rolling as the distribution name
+                sources_content = f"deb {repository_url} kali-rolling main"
+            else:
+                codename = get_codename(distribution, version)
+                sources_content = f"deb {repository_url} {codename} main"
+
+            # Create Docker command to test apt update with explicit Docker host
             docker_cmd = [
                 "docker", "run", "--rm",
                 image, "bash", "-c",
                 f"""
                 echo 'nameserver 8.8.8.8' > /etc/resolv.conf && \\
+                echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && \\
                 echo '{sources_content}' > /etc/apt/sources.list && \\
                 apt-get update -y --allow-insecure-repositories 2>&1
                 """
             ]
+        elif distribution.lower() in ["rocky", "rhel", "centos"]:
+            # For RPM-based systems, test with dnf/yum update
+            if distribution.lower() == "rocky" and version in ["8", "9", "10"]:
+                # Rocky Linux repo structure: baseurl/rocky/version/BaseOS/arch/os/
+                baseos_url = f"{repository_url}/{version}/BaseOS/x86_64/os/"
+            elif distribution.lower() == "rhel" and version in ["8", "9", "10"]:
+                # RHEL repo structure for private repo: baseurl/version/BaseOS/arch/os/
+                baseos_url = f"{repository_url}/{version}/BaseOS/x86_64/os/"
+
+            # Set up repo configuration for both Rocky and RHEL
+            if distribution.lower() in ["rocky", "rhel"] and version in ["8", "9", "10"]:
+                repo_name = f"{distribution.lower()}-baseos"
+                repo_display_name = f"{distribution.title()} {version} - BaseOS"
+
+                # Both RHEL and Rocky Linux use similar configuration for private repos
+                bash_script = (
+                    f"export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && "
+                    f"echo 'nameserver 8.8.8.8' > /etc/resolv.conf && "
+                    f"echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && "
+                    f"rm -rf /etc/yum.repos.d/* && "
+                    f"mkdir -p /etc/yum.repos.d && "
+                    f"echo '[{repo_name}]' > /etc/yum.repos.d/test.repo && "
+                    f"echo 'name={repo_display_name}' >> /etc/yum.repos.d/test.repo && "
+                    f"echo 'baseurl={baseos_url}' >> /etc/yum.repos.d/test.repo && "
+                    f"echo 'enabled=1' >> /etc/yum.repos.d/test.repo && "
+                    f"echo 'gpgcheck=0' >> /etc/yum.repos.d/test.repo && "
+                    f"dnf clean all && "
+                    f"dnf --disablerepo='*' --enablerepo='{repo_name}' makecache 2>&1"
+                )
+                docker_cmd = [
+                    "docker", "run", "--rm", "--env", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    image, "bash", "-c",
+                    bash_script
+                ]
+            else:
+                # Fallback for other RPM systems
+                docker_cmd = [
+                    "docker", "run", "--rm",
+                    image, "bash", "-c",
+                    f"curl -I {repository_url} 2>&1"
+                ]
         else:
-            # For RPM-based systems, test differently
+            # For other systems, just test connectivity
             docker_cmd = [
                 "docker", "run", "--rm",
-                image, "bash", "-c",
-                f"curl -I {repository_url} 2>&1"
+                "alpine:latest", "sh", "-c",
+                f"wget -q --spider {repository_url} 2>&1 || curl -I {repository_url} 2>&1"
             ]
 
         # Run the test with timeout
+        # Set environment to include Docker host
+        env = os.environ.copy()
+        env['DOCKER_HOST'] = docker_host
+
         process = await asyncio.create_subprocess_exec(
             *docker_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT
+            stderr=asyncio.subprocess.STDOUT,
+            env=env
         )
 
         try:
@@ -185,6 +249,10 @@ async def test_repository_update(distribution: str, version: str, repository_url
 
             if process.returncode == 0:
                 if "Reading package lists" in output or "Hit:" in output or "Get:" in output:
+                    return "success", None
+                elif "Metadata cache created" in output or "Cache created successfully" in output:
+                    return "success", None
+                elif distribution.lower() in ["rocky", "rhel", "centos"] and "Rocky Linux" in output:
                     return "success", None
                 else:
                     return "partial", "Update completed but with warnings"
@@ -201,39 +269,93 @@ async def test_repository_update(distribution: str, version: str, repository_url
 
 async def test_package_install(distribution: str, version: str, repository_url: str):
     """Test package installation from repository"""
+    import os
     try:
         base_images = {
             "debian": f"debian:{version}" if version in ["11", "12"] else "debian:latest",
             "ubuntu": f"ubuntu:{version}" if version in ["20.04", "22.04", "24.04"] else "ubuntu:latest",
             "kali": "kalilinux/kali-rolling:latest",
-            "rocky": f"rockylinux:{version}" if version in ["8", "9"] else "rockylinux:latest"
+            "rocky": f"rockylinux:{version}" if version in ["8", "9"] else "rockylinux:9",
+            "rhel": f"registry.access.redhat.com/ubi{version}/ubi" if version in ["8", "9"] else "registry.access.redhat.com/ubi9/ubi"
         }
 
         image = base_images.get(distribution.lower(), "ubuntu:latest")
 
-        if distribution.lower() in ["debian", "ubuntu"]:
-            codename = get_codename(distribution, version)
-            sources_content = f"deb {repository_url} {codename} main"
-            test_package = "curl"  # Common package available in most repos
+        # Set Docker host from environment
+        docker_host = os.environ.get('DOCKER_HOST', 'tcp://docker-daemon:2376')
+
+        if distribution.lower() in ["debian", "ubuntu", "kali"]:
+            if distribution.lower() == "kali":
+                # Kali uses kali-rolling as the distribution name
+                sources_content = f"deb {repository_url} kali-rolling main"
+                test_package = "curl"  # Reliable package in Kali
+            else:
+                codename = get_codename(distribution, version)
+                sources_content = f"deb {repository_url} {codename} main"
+                test_package = "nano"  # Most reliable package across Debian/Ubuntu versions
 
             docker_cmd = [
                 "docker", "run", "--rm",
                 image, "bash", "-c",
                 f"""
                 echo 'nameserver 8.8.8.8' > /etc/resolv.conf && \\
+                echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && \\
                 echo '{sources_content}' > /etc/apt/sources.list && \\
                 apt-get update -y --allow-insecure-repositories && \\
-                apt-get install -y {test_package} 2>&1
+                apt-get install -y --allow-unauthenticated {test_package} 2>&1
                 """
             ]
+        elif distribution.lower() in ["rocky", "rhel", "centos"]:
+            # For RPM-based systems, test with dnf install
+            if distribution.lower() == "rocky" and version in ["8", "9", "10"]:
+                # Rocky Linux repo structure
+                baseos_url = f"{repository_url}/{version}/BaseOS/x86_64/os/"
+                test_package = "nano"  # Reliable package in Rocky Linux BaseOS repository
+            elif distribution.lower() == "rhel" and version in ["8", "9", "10"]:
+                # RHEL repo structure for private repo
+                baseos_url = f"{repository_url}/{version}/BaseOS/x86_64/os/"
+                test_package = "tree"  # tree is available in RHEL BaseOS repository and not pre-installed
+
+            # Set up repo configuration for both Rocky and RHEL
+            if distribution.lower() in ["rocky", "rhel"] and version in ["8", "9", "10"]:
+                repo_name = f"{distribution.lower()}-baseos"
+                repo_display_name = f"{distribution.title()} {version} - BaseOS"
+
+                # Both RHEL and Rocky Linux use similar configuration for private repos
+                bash_script = (
+                    f"export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && "
+                    f"echo 'nameserver 8.8.8.8' > /etc/resolv.conf && "
+                    f"echo 'nameserver 1.1.1.1' >> /etc/resolv.conf && "
+                    f"rm -rf /etc/yum.repos.d/* && "
+                    f"mkdir -p /etc/yum.repos.d && "
+                    f"echo '[{repo_name}]' > /etc/yum.repos.d/test.repo && "
+                    f"echo 'name={repo_display_name}' >> /etc/yum.repos.d/test.repo && "
+                    f"echo 'baseurl={baseos_url}' >> /etc/yum.repos.d/test.repo && "
+                    f"echo 'enabled=1' >> /etc/yum.repos.d/test.repo && "
+                    f"echo 'gpgcheck=0' >> /etc/yum.repos.d/test.repo && "
+                    f"dnf clean all && "
+                    f"dnf --disablerepo='*' --enablerepo='{repo_name}' install -y {test_package} 2>&1"
+                )
+                docker_cmd = [
+                    "docker", "run", "--rm", "--env", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    image, "bash", "-c",
+                    bash_script
+                ]
+            else:
+                return "success", "Other RPM-based install test not implemented"
         else:
-            # For RPM-based, just test connectivity
-            return "success", "RPM-based install test not implemented"
+            # For other systems
+            return "success", "Install test not implemented for this distribution"
+
+        # Set environment to include Docker host
+        env = os.environ.copy()
+        env['DOCKER_HOST'] = docker_host
 
         process = await asyncio.create_subprocess_exec(
             *docker_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT
+            stderr=asyncio.subprocess.STDOUT,
+            env=env
         )
 
         try:
@@ -242,6 +364,10 @@ async def test_package_install(distribution: str, version: str, repository_url: 
 
             if process.returncode == 0:
                 if "Setting up" in output or "Processing triggers" in output:
+                    return "success", None
+                elif "Installed:" in output or "Complete!" in output:
+                    return "success", None
+                elif distribution.lower() in ["rocky", "rhel", "centos"] and ("Transaction complete" in output or "Transaction test" in output or "Running transaction" in output):
                     return "success", None
                 else:
                     return "partial", "Package installed but with warnings"
@@ -260,7 +386,8 @@ def get_codename(distribution: str, version: str):
     """Get the codename for a distribution version"""
     codenames = {
         "debian": {"7": "wheezy", "8": "jessie", "9": "stretch", "10": "buster", "11": "bullseye", "12": "bookworm", "13": "trixie"},
-        "ubuntu": {"18.04": "bionic", "20.04": "focal", "22.04": "jammy", "24.04": "noble"}
+        "ubuntu": {"18.04": "bionic", "20.04": "focal", "22.04": "jammy", "24.04": "noble"},
+        "kali": {"kali-rolling": "kali-rolling"}
     }
     return codenames.get(distribution.lower(), {}).get(version, version)
 

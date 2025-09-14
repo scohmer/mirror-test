@@ -6,7 +6,11 @@
       "Bash(curl:*)",
       "Bash(docker exec:*)",
       "Bash(python:*)",
-      "Bash(docker-compose:*)"
+      "Bash(docker-compose:*)",
+      "Bash(docker compose:*)",
+      "Bash(paste:*)",
+      "WebSearch",
+      "Bash(netstat:*)"
     ],
     "deny": [],
     "ask": []

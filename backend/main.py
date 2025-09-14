@@ -52,12 +52,25 @@ async def test_websocket_endpoint(websocket: WebSocket):
                 data = await websocket.receive_text()
                 # Echo the received message back to client
                 await websocket.send_text(f"Echo: {data}")
+            except asyncio.CancelledError:
+                # Clean shutdown
+                break
             except Exception as e2:
-                # If we can't receive, just continue listening
-                print(f"Error receiving from WebSocket: {e2}")
-                await asyncio.sleep(1)
+                # Check if WebSocket is still connected
+                if "disconnect" in str(e2).lower() or "close" in str(e2).lower():
+                    print(f"WebSocket disconnected normally")
+                    break
+                else:
+                    print(f"Error receiving from WebSocket: {e2}")
+                    await asyncio.sleep(1)
     except Exception as e:
         print(f"WebSocket error in test endpoint: {e}")
+    finally:
+        # Ensure proper cleanup
+        try:
+            await websocket.close()
+        except:
+            pass
 
 if __name__ == "__main__":
     import uvicorn

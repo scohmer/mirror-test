@@ -11,14 +11,14 @@ app:
 repositories:
   # Debian repositories - current releases
   debian:
-    - url: "http://deb.debian.org/debian"
+    - url: "http://192.168.0.76/apt/debian/mirror/deb.debian.org/debian/"
       enabled: true
       distributions:
         - "11"  # bullseye
         - "12"  # bookworm
         - "13"  # trixie (testing)
     # Debian archive for older versions
-    - url: "http://archive.debian.org/debian"
+    - url: "http://192.168.0.76/apt/debian/mirror/archive.debian.org/debian/"
       enabled: true
       distributions:
         - "7"   # wheezy (archived)
@@ -28,37 +28,33 @@ repositories:
   
   # Ubuntu repositories
   ubuntu:
-    - url: "http://archive.ubuntu.com/ubuntu"
+    - url: "http://192.168.0.76/apt/ubuntu/mirror/archive.ubuntu.com/ubuntu/"
       enabled: true
       distributions:
         - "20.04"  # focal (LTS)
         - "22.04"  # jammy (LTS)
         - "24.04"  # noble (LTS)
-    # Ubuntu old releases
-    - url: "http://old-releases.ubuntu.com/ubuntu"
-      enabled: true
-      distributions:
         - "18.04"  # bionic (EOL)
   
   # Kali repositories
   kali:
-    - url: "http://kali.download/kali"
+    - url: "http://192.168.0.76/apt/kali/mirror/http.kali.org/kali/"
       enabled: true
       distributions:
         - "kali-rolling"
   
   # Rocky Linux repositories
   rocky:
-    - url: "http://dl.rockylinux.org/pub/rocky"
+    - url: "http://192.168.0.76/yum/rocky/pub/rocky/"
       enabled: true
       distributions:
         - "8"
         - "9"
         - "10"
   
-  # RHEL repositories
+  # RHEL repositories (requires Red Hat subscription and certificates in /etc/pki/entitlements/)
   rhel:
-    - url: "http://download.devel.redhat.com/rel-eng/"
+    - url: "http://192.168.0.76/yum/rhel/pub/rhel/"
       enabled: true
       distributions:
         - "8"
